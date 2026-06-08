@@ -1,18 +1,16 @@
 from pathlib import Path
 from uuid import uuid4
 import logging
+import os
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import ALLOWED_EXTENSIONS, DATA_DIR, MAX_UPLOAD_SIZE_MB, MIN_SOURCE_DOCUMENTS, SOURCE_DOCS_DIR, UPLOAD_DIR
-from .corpus import corpus_status as get_corpus_status, ingest_source_documents
 from .database import count_paper_embeddings, create_paper, delete_chat_history, delete_paper_record, get_cached_summary, get_paper, init_db, list_chat_history, list_papers, update_paper_chunks
 from .models import ChatMessageResponse, ChatRequest, ChatResponse, CorpusStatusResponse, ErrorResponse, EvaluationRequest, EvaluationResponse, EvaluationResult, PaperResponse, SummaryRequest, SummaryResponse
 from .pdf_processing import extract_pdf_chunks
-from .rag import answer_question, summarize_paper
-from .vector_store import add_chunks, delete_paper_vectors
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
@@ -34,7 +32,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        *([os.getenv("FRONTEND_ORIGIN", "").rstrip("/")] if os.getenv("FRONTEND_ORIGIN") else []),
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,12 +73,16 @@ def _ensure_paper_vector_index(paper_id: int) -> None:
         return
     logger.info("Lazy reindexing paper with current embedding model: paper_id=%s", paper_id)
     _page_count, chunks = extract_pdf_chunks(pdf_path, str(row["name"]))
+    from .vector_store import add_chunks
+
     chunk_count = add_chunks(paper_id, str(row["name"]), chunks)
     update_paper_chunks(paper_id, chunk_count)
     logger.info("Lazy reindex complete: paper_id=%s chunks=%s", paper_id, chunk_count)
 
 
 def _corpus_status() -> CorpusStatusResponse:
+    from .corpus import corpus_status as get_corpus_status
+
     return get_corpus_status()
 
 
@@ -106,6 +112,8 @@ async def _store_and_index_upload(file: UploadFile) -> PaperResponse:
         raise HTTPException(status_code=400, detail="No extractable text found in this PDF.")
 
     paper_id = create_paper(safe_name, stored_path, page_count, 0)
+    from .vector_store import add_chunks
+
     chunk_count = add_chunks(paper_id, safe_name, chunks)
     update_paper_chunks(paper_id, chunk_count)
     logger.info("Upload indexed: paper_id=%s pages=%s chunks=%s", paper_id, page_count, chunk_count)
@@ -126,6 +134,8 @@ def corpus_status() -> CorpusStatusResponse:
 
 @app.post("/corpus/ingest")
 def ingest_corpus() -> dict[str, object]:
+    from .corpus import ingest_source_documents
+
     indexed, status = ingest_source_documents()
     return {"indexed": indexed, "status": status}
 
@@ -143,6 +153,8 @@ def delete_paper(paper_id: int) -> dict[str, str]:
     if paper is None:
         raise HTTPException(status_code=404, detail="Paper not found.")
     file_path = Path(str(paper["file_path"]))
+    from .vector_store import delete_paper_vectors
+
     delete_paper_vectors(paper_id)
     delete_paper_record(paper_id)
     file_path.unlink(missing_ok=True)
@@ -182,6 +194,8 @@ def chat(request: ChatRequest) -> ChatResponse:
     if paper_id is not None:
         _ensure_paper_vector_index(paper_id)
 
+    from .rag import answer_question
+
     return answer_question(request.question, paper_id, request.session_id)
 
 
@@ -200,6 +214,8 @@ def evaluate(request: EvaluationRequest) -> EvaluationResponse:
     for index, item in enumerate(request.questions, start=1):
         if item.expected_paper_id is not None and get_paper(item.expected_paper_id) is None:
             raise HTTPException(status_code=404, detail=f"Expected paper {item.expected_paper_id} not found.")
+        from .rag import answer_question
+
         response = answer_question(item.question, paper_id=None, session_id=f"{request.session_id}-{index}")
         citation_paper_ids = {
             int(row["id"])
@@ -259,6 +275,8 @@ def generate_summary(request: SummaryRequest) -> SummaryResponse:
         raise HTTPException(status_code=404, detail="Paper not found.")
     try:
         _ensure_paper_vector_index(request.paper_id)
+        from .rag import summarize_paper
+
         summary, citations, cached = summarize_paper(request.paper_id, force=request.force)
         logger.info(
             "Summarize response ready: paper_id=%s cached=%s chars=%s citations=%s",
