@@ -192,12 +192,27 @@ def chat(request: ChatRequest) -> ChatResponse:
     paper_id = request.paper_id
     if paper_id is not None and get_paper(paper_id) is None:
         raise HTTPException(status_code=404, detail="Paper not found.")
+    if paper_id is None and not list_papers():
+        return _empty_corpus_response()
     if paper_id is not None:
         _ensure_paper_vector_index(paper_id)
 
     from .rag import answer_question
 
     return answer_question(request.question, paper_id, request.session_id)
+
+
+def _empty_corpus_response() -> ChatResponse:
+    answer = "Information not found in uploaded research papers."
+    return ChatResponse(
+        answer=answer,
+        citations=[],
+        simple_explanation=answer,
+        key_insights=[],
+        confidence=0.0,
+        formatted=answer,
+        analytics=None,
+    )
 
 
 @app.get("/chat/history", response_model=list[ChatMessageResponse])
