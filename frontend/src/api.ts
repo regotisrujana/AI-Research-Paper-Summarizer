@@ -1,6 +1,9 @@
 import type { ChatResponse, CorpusStatus, EvaluationQuestion, EvaluationResponse, Message, Paper } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const API_BASE = (
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.PROD ? "https://ai-research-paper-summarizer.onrender.com" : "http://localhost:8000")
+).replace(/\/$/, "");
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
