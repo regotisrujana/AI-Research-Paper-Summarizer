@@ -163,19 +163,17 @@ function App() {
 
           {sidebarOpen && (
             <>
-              {corpusStatus && <CorpusStatusCard status={corpusStatus} />}
-
               <div className="mt-6 flex items-center justify-between text-sm font-semibold">
-                <span>Backend Source Documents</span>
+                <span>Cancer Research Documents</span>
               </div>
               <div className="mt-3 space-y-2">
-                {loading.papers && <EmptyLine text="Loading indexed corpus..." />}
-                {!loading.papers && papers.length === 0 && <EmptyLine text="No backend documents indexed yet." />}
+                {loading.papers && <EmptyLine text="Loading indexed research papers..." />}
+                {!loading.papers && papers.length === 0 && <EmptyLine text="No indexed research papers are available yet." />}
                 {papers.length > 0 && (
                   <button className={`paper-row ${selectedPaperId === undefined ? "paper-button-active" : ""}`} onClick={() => setSelectedPaperId(undefined)}>
                     <span className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4 shrink-0" />
-                      <span className="font-medium">All corpus documents</span>
+                      <span className="font-medium">All cancer research papers</span>
                     </span>
                   </button>
                 )}
@@ -202,7 +200,7 @@ function App() {
               ) : (
                 corpusStatus && (
                   <p className="text-xs text-slate-500">
-                    Backend corpus: {corpusStatus.uploaded_documents}/{corpusStatus.required_documents} PDFs - {corpusStatus.total_chunks} chunks
+                    Indexed corpus: {corpusStatus.uploaded_documents} PDF(s) - {corpusStatus.total_chunks} chunks
                   </p>
                 )
               )}
@@ -234,7 +232,7 @@ function App() {
                 <div className="chat-window">
                   {loading.history && <EmptyLine text="Loading chat history..." />}
                   {!loading.history && messages.length === 0 && (
-                    <EmptyLine text={papers.length ? "Ask across the full backend corpus, or select one document for paper-specific questions." : "Index backend source PDFs to start chatting."} />
+                    <EmptyLine text={papers.length ? "Ask across the full cancer research corpus, or select one document for paper-specific questions." : "Ask a cancer research question. Citation-grounded answers need indexed backend documents."} />
                   )}
                   {messages.map((message, index) => (
                     <div key={message.id ?? index} className={`message ${message.role === "user" ? "message-user" : "message-assistant"}`}>
@@ -253,8 +251,7 @@ function App() {
                     value={question}
                     onChange={(event) => setQuestion(event.target.value)}
                     className="chat-input"
-                    placeholder="Ask a citation-grounded corpus question"
-                    disabled={papers.length === 0}
+                    placeholder="Ask a cancer research RAG question"
                   />
                   <button className="primary-button" disabled={loading.chat || !question.trim()}>
                     <Send className="h-4 w-4" />
@@ -271,7 +268,7 @@ function App() {
               <section className="panel p-4 text-sm">
                 <h2 className="mb-2 font-semibold">Sample Queries</h2>
                 <ul className="space-y-2 text-slate-600 dark:text-slate-300">
-                  <li>Summarize the common methods across the corpus.</li>
+                  <li>Summarize the common methods across the cancer research corpus.</li>
                   <li>What limitations are reported?</li>
                   <li>Compare findings across the documents.</li>
                   <li>Create viva questions from this domain.</li>
@@ -283,20 +280,6 @@ function App() {
         </section>
       </div>
     </main>
-  );
-}
-
-function CorpusStatusCard({ status }: { status: CorpusStatus }) {
-  const progress = Math.min(100, Math.round((status.uploaded_documents / status.required_documents) * 100));
-  return (
-    <section className="rounded-lg border border-black/10 bg-white p-4 text-sm dark:border-white/10 dark:bg-slate-900">
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-semibold">50-PDF Corpus</span>
-        <span className={status.ready ? "text-green-600" : "text-coral"}>{status.uploaded_documents}/{status.required_documents}</span>
-      </div>
-      <ProgressBar value={progress} text={status.ready ? "Ready for evaluation" : `${status.remaining_documents} backend PDF(s) still needed`} />
-      <p className="mt-3 text-xs text-slate-500">Put PDFs in data/source_documents and run backend ingestion.</p>
-    </section>
   );
 }
 
@@ -430,17 +413,6 @@ function SummaryBody({ loading, error, text }: { loading: boolean; error: string
   }
   if (error) return <p className="m-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-200">{error}</p>;
   return <pre className="max-h-[460px] overflow-y-auto whitespace-pre-wrap break-words p-5 font-sans text-sm leading-6 text-slate-600 dark:text-slate-300">{text}</pre>;
-}
-
-function ProgressBar({ value, text }: { value: number; text: string }) {
-  return (
-    <div className="mt-3">
-      <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-        <div className="h-full bg-coral transition-all" style={{ width: `${value}%` }} />
-      </div>
-      <p className="mt-1 text-xs text-slate-500">{text}</p>
-    </div>
-  );
 }
 
 function EmptyLine({ text }: { text: string }) {
