@@ -70,6 +70,19 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (loading.papers || (corpusStatus?.uploaded_documents ?? 0) >= 100) return;
+    const intervalId = window.setInterval(() => {
+      Promise.all([fetchPapers(), fetchCorpusStatus()])
+        .then(([paperData, status]) => {
+          setPapers(paperData);
+          setCorpusStatus(status);
+        })
+        .catch((err) => setError(err.message));
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [corpusStatus?.uploaded_documents, loading.papers]);
+
+  useEffect(() => {
     if (papers.length === 0) {
       setMessages([]);
       return;

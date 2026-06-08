@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Thread
 from uuid import uuid4
 import logging
 import os
@@ -22,6 +23,7 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("research_summarizer")
+_ingest_thread_started = False
 
 app = FastAPI(
     title="AI Research Paper Summarizer API",
@@ -49,6 +51,34 @@ def startup() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     SOURCE_DOCS_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
+    _start_background_corpus_ingest()
+
+
+def _start_background_corpus_ingest() -> None:
+    global _ingest_thread_started
+    if _ingest_thread_started:
+        return
+    if os.getenv("AUTO_INGEST_CORPUS", "true").lower() not in {"1", "true", "yes"}:
+        logger.info("Backend corpus auto-ingest disabled by AUTO_INGEST_CORPUS.")
+        return
+    _ingest_thread_started = True
+    Thread(target=_background_corpus_ingest, name="corpus-ingest", daemon=True).start()
+
+
+def _background_corpus_ingest() -> None:
+    try:
+        logger.info("Backend corpus auto-ingest started: source_dir=%s", SOURCE_DOCS_DIR)
+        from .corpus import ingest_source_documents
+
+        indexed, status = ingest_source_documents()
+        logger.info(
+            "Backend corpus auto-ingest finished: newly_indexed=%s total_documents=%s chunks=%s",
+            len(indexed),
+            status.uploaded_documents,
+            status.total_chunks,
+        )
+    except Exception:
+        logger.exception("Backend corpus auto-ingest failed.")
 
 
 @app.exception_handler(Exception)
