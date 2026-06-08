@@ -30,6 +30,8 @@ BM25_WEIGHT = 0.4
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
 ENABLE_CHROMA_WRITE = os.getenv("ENABLE_CHROMA_WRITE", "false").lower() == "true"
+USE_SENTENCE_TRANSFORMERS = os.getenv("USE_SENTENCE_TRANSFORMERS", "false").lower() == "true"
+USE_CROSS_ENCODER = os.getenv("USE_CROSS_ENCODER", "false").lower() == "true"
 DOMAIN_NAME = os.getenv("DOMAIN_NAME", "Cancer research corpus")
 MIN_SOURCE_DOCUMENTS = int(os.getenv("MIN_SOURCE_DOCUMENTS", "50"))
 

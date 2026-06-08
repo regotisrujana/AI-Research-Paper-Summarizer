@@ -33,7 +33,7 @@ def ingest_source_documents(source_dir: Path = SOURCE_DOCS_DIR) -> tuple[list[Pa
 
     for pdf_path in sorted(source_dir.glob("*.pdf")):
         existing = get_paper_by_name(pdf_path.name)
-        if existing is not None:
+        if existing is not None and int(existing["chunk_count"]) > 0:
             logger.info("Corpus ingest skipped existing source: %s", pdf_path.name)
             continue
 
@@ -42,7 +42,7 @@ def ingest_source_documents(source_dir: Path = SOURCE_DOCS_DIR) -> tuple[list[Pa
             logger.warning("Corpus ingest skipped empty PDF text: %s", pdf_path)
             continue
 
-        paper_id = create_paper(pdf_path.name, pdf_path, page_count, 0)
+        paper_id = int(existing["id"]) if existing is not None else create_paper(pdf_path.name, pdf_path, page_count, 0)
         chunk_count = add_chunks(paper_id, pdf_path.name, chunks)
         update_paper_chunks(paper_id, chunk_count)
         paper = get_paper(paper_id)

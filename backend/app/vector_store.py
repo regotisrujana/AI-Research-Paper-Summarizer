@@ -2,6 +2,7 @@ import logging
 import os
 import math
 import re
+import hashlib
 from functools import lru_cache
 from typing import Iterable
 
@@ -21,6 +22,8 @@ from .config import (
     MIN_RERANK_SCORE,
     RERANK_TOP_K,
     RERANKER_MODEL,
+    USE_CROSS_ENCODER,
+    USE_SENTENCE_TRANSFORMERS,
     TOP_K,
 )
 from .models import Citation
@@ -65,6 +68,28 @@ class SentenceTransformerEmbeddings(Embeddings):
         return vector.tolist()
 
 
+class HashingEmbeddings(Embeddings):
+    """Deployment-safe embeddings that avoid loading torch/sentence-transformers."""
+
+    dimensions = 384
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
+
+    def _embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
+        for token in _tokenize(text):
+            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+            bucket = int.from_bytes(digest[:4], "little") % self.dimensions
+            sign = 1.0 if digest[4] % 2 == 0 else -1.0
+            vector[bucket] += sign
+        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+        return [value / norm for value in vector]
+
+
 @lru_cache(maxsize=1)
 def _get_cross_encoder():
     from transformers.utils import logging as transformers_logging
@@ -75,9 +100,9 @@ def _get_cross_encoder():
     return CrossEncoder(RERANKER_MODEL)
 
 
-embedding_function = SentenceTransformerEmbeddings(EMBEDDING_MODEL)
+embedding_function = SentenceTransformerEmbeddings(EMBEDDING_MODEL) if USE_SENTENCE_TRANSFORMERS else HashingEmbeddings()
 vector_store = Chroma(
-    collection_name="research_papers_bge_v1_5",
+    collection_name="research_papers_bge_v1_5" if USE_SENTENCE_TRANSFORMERS else "research_papers_hashing_v1",
     embedding_function=embedding_function,
     persist_directory=str(CHROMA_DIR),
     collection_metadata={"hnsw:space": "cosine"},
@@ -419,6 +444,16 @@ def _min_max(scores: list[float]) -> list[float]:
 
 
 def _rerank(question: str, candidates: list[tuple[Document, float]]) -> list[tuple[Document, float, float]]:
+    if not USE_CROSS_ENCODER:
+        query_terms = set(_tokenize(question))
+        reranked = []
+        for document, similarity in candidates:
+            doc_terms = set(_tokenize(document.page_content))
+            lexical = len(query_terms.intersection(doc_terms)) / max(len(query_terms), 1)
+            reranked.append((document, similarity, float(similarity + lexical)))
+        reranked.sort(key=lambda item: item[2], reverse=True)
+        return reranked[:RERANK_TOP_K]
+
     pairs = [(question, document.page_content) for document, _similarity in candidates]
     scores = _get_cross_encoder().predict(pairs, show_progress_bar=False)
     reranked = [
